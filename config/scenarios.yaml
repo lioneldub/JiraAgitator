@@ -1,0 +1,35 @@
+scenarios:
+  - id: add_comment
+    type: add_comment
+    weight: 40
+    description: "Un membre de l'équipe ajoute un commentaire de suivi sur un ticket"
+
+  - id: change_status
+    type: change_status
+    weight: 30
+    description: "Un ticket avance dans le workflow (To Do → In Progress → In Review → Done)"
+
+  - id: change_assignee
+    type: change_assignee
+    weight: 10
+    description: "Un ticket est réassigné à un autre membre de l'équipe"
+
+  - id: block_ticket
+    type: block_ticket
+    weight: 8
+    description: "Un ticket est bloqué — le membre explique le blocage en commentaire"
+
+  - id: set_absence
+    type: set_absence
+    weight: 4
+    description: "Un membre part en absence, ses tickets ouverts sont réassignés"
+
+  - id: return_from_absence
+    type: return_from_absence
+    weight: 4
+    description: "Un membre revient d'absence et redevient disponible"
+
+  - id: add_subtask
+    type: add_subtask
+    weight: 4
+    description: "Une sous-tâche est créée sur un ticket existant"

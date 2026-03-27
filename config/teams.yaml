@@ -1,0 +1,36 @@
+teams:
+  - id: phoenix
+    name: "Team Phoenix"
+    members:
+      - id: alice_m
+        display_name: "Alice Martin"
+        role: lead
+        availability: available
+      - id: bob_d
+        display_name: "Bob Dupont"
+        role: dev
+        availability: available
+      - id: claire_v
+        display_name: "Claire Vidal"
+        role: dev
+        availability: available
+      - id: david_r
+        display_name: "David Renard"
+        role: qa
+        availability: available
+
+  - id: nebula
+    name: "Team Nebula"
+    members:
+      - id: emma_b
+        display_name: "Emma Bernard"
+        role: lead
+        availability: available
+      - id: felix_g
+        display_name: "Félix Garcia"
+        role: dev
+        availability: available
+      - id: grace_l
+        display_name: "Grace Lambert"
+        role: dev
+        availability: available
