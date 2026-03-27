@@ -6,4 +6,4 @@ if __name__ == '__main__':
     parser.add_argument('--events', type=int, default=3, help="Nombre d'événements à simuler")
     parser.add_argument('--dry-run', action='store_true', help='Force le mode dry-run')
     args = parser.parse_args()
-    run_simulation(n_events=args.events)
+    run_simulation(n_events=args.events, force_dry_run=args.dry_run)

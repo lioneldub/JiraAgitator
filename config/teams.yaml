@@ -6,18 +6,22 @@ teams:
         display_name: "Alice Martin"
         role: lead
         availability: available
+        jira_account_id: ""
       - id: bob_d
         display_name: "Bob Dupont"
         role: dev
         availability: available
+        jira_account_id: ""
       - id: claire_v
         display_name: "Claire Vidal"
         role: dev
         availability: available
+        jira_account_id: ""
       - id: david_r
         display_name: "David Renard"
         role: qa
         availability: available
+        jira_account_id: ""
 
   - id: nebula
     name: "Team Nebula"

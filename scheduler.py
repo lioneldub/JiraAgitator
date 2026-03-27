@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()  # doit être appelé avant toute lecture de os.getenv()
+
 import yaml
 import logging
 
@@ -12,7 +15,7 @@ logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 status_flow = ['To Do', 'In Progress', 'In Review', 'Done']
 
 
-def run_simulation(n_events: int = 3) -> None:
+def run_simulation(n_events: int = 3, force_dry_run: bool = False) -> None:
     state_manager = StateManager()
     state = state_manager.load() or {
         'last_run': None,
@@ -25,7 +28,7 @@ def run_simulation(n_events: int = 3) -> None:
 
     scenario_engine = ScenarioEngine()
     ai_writer = AIWriter()
-    jira_client = JiraClient()
+    jira_client = JiraClient(force_dry_run=force_dry_run)
 
     executed = 0
     skipped = 0
@@ -33,6 +36,8 @@ def run_simulation(n_events: int = 3) -> None:
     logger.info('Run started — %d events requested', n_events)
 
     for _ in range(n_events):
+        state = state_manager.load()  # Recharger state à chaque itération pour rester en sync
+
         scenario = scenario_engine.pick_scenario()
         event = scenario_engine.build_event(scenario, state, teams_config)
 
@@ -55,9 +60,12 @@ def run_simulation(n_events: int = 3) -> None:
                 jira_client.transition_ticket(key, next_status)
                 state_manager.update_ticket_status(key, next_status)
             elif stype == 'change_assignee':
-                available_members = [x for x, v in state.get('members', {}).items() if v.get('availability') == 'available']
-                if available_members:
-                    new_assignee = available_members[0]
+                current_assignee = state.get('tickets', {}).get(key, {}).get('assignee_id')
+                candidates = [x for x, v in state.get('members', {}).items()
+                              if v.get('availability') == 'available' and x != current_assignee]
+                if candidates:
+                    import random
+                    new_assignee = random.choice(candidates)
                     jira_client.assign_ticket(key, new_assignee)
                     state_manager.update_ticket_assignee(key, new_assignee)
             elif stype == 'block_ticket':

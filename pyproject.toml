@@ -1,0 +1,11 @@
+[project]
+name = "jira-simulator"
+version = "0.3.0"
+requires-python = ">=3.11"
+description = "Simulateur d'activité Jira Cloud avec IA"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+log_cli = true
+log_cli_level = "WARNING"

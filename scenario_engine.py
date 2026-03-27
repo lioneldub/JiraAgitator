@@ -50,6 +50,7 @@ class ScenarioEngine:
                     'team_id': team_id,
                     'member_id': member['id'],
                     'member_name': member['display_name'],
+                    'member_role': member.get('role', 'dev'),
                     'ticket_key': None,
                     'ticket_summary': None,
                     'context': {},
@@ -64,6 +65,7 @@ class ScenarioEngine:
                 'team_id': team_id,
                 'member_id': member['id'],
                 'member_name': member['display_name'],
+                'member_role': member.get('role', 'dev'),
                 'ticket_key': ticket['key'],
                 'ticket_summary': ticket['summary'],
                 'context': {

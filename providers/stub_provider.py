@@ -33,7 +33,9 @@ STUB_RESPONSES = {
     ]
 }
 
-class StubProvider:
+from providers.base_provider import BaseProvider
+
+class StubProvider(BaseProvider):
     """Provider stub pour génération de contenu IA de test."""
 
     def generate(self, event: Dict) -> str:
