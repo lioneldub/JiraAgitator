@@ -6,7 +6,7 @@ teams:
         display_name: "Alice Martin"
         role: lead
         availability: available
-        jira_account_id: ""
+        jira_account_id: "5d3b1c6375218c0c20adb6c1"
       - id: bob_d
         display_name: "Bob Dupont"
         role: dev

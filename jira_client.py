@@ -32,11 +32,17 @@ class JiraClient:
                         self._account_id_map[mid] = aid
 
         logger.info('JiraClient: DRY_RUN=%s — no HTTP calls will be made', self.dry_run)
+        if not self.dry_run:
+            logger.warning(
+                "JiraClient: MODE LIVE ACTIF — les appels HTTP vers Jira sont réels !"
+            )
 
     def _get_auth_headers(self) -> Dict[str, str]:
         if not self.email or not self.api_token:
             raise EnvironmentError('JIRA_EMAIL et JIRA_API_TOKEN doivent être définis en mode live')
-        credentials = base64.b64encode(f"{self.email}:{self.api_token}".encode()).decode()
+        credentials = base64.b64encode(
+            f"{self.email}:{self.api_token}".encode('utf-8')
+        ).decode('utf-8')
         return {
             'Authorization': f'Basic {credentials}',
             'Content-Type': 'application/json',
@@ -116,17 +122,30 @@ class JiraClient:
         return self._handle_response(response, f'transition_ticket({ticket_key}→{new_status})')
 
     def assign_ticket(self, ticket_key: str, account_id: str) -> Dict[str, Any]:
-        """Réassigne le ticket. Résout member_id → jira_account_id si nécessaire."""
+        """Réassigne le ticket. Ignore silencieusement si accountId inconnu."""
         resolved_id = self._account_id_map.get(account_id, account_id)
+
         if self.dry_run:
             return self._dry_log('change_assignee', ticket_key,
                                  f'assign to {account_id} (accountId: {resolved_id})')
 
+        if not resolved_id or resolved_id == account_id:
+            # account_id non résolu — membre fictif sans accountId Jira réel
+            logger.warning(
+                "assign_ticket ignoré pour %s — accountId non résolu pour '%s'. "
+                "Remplir jira_account_id dans config/teams.yaml.",
+                ticket_key, account_id
+            )
+            return {'status': 'skipped', 'reason': 'unresolved_account_id'}
+
         url = f"{self.base_url}/rest/api/3/issue/{ticket_key}/assignee"
-        payload = {'accountId': resolved_id}
-        headers = self._get_auth_headers()
-        response = requests.put(url, json=payload, headers=headers, timeout=15)
-        return self._handle_response(response, f'assign_ticket({ticket_key}->{resolved_id})')
+        r = requests.put(
+            url,
+            headers=self._get_auth_headers(),
+            json={"accountId": resolved_id},
+            timeout=15
+        )
+        return self._handle_response(r, f"assign_ticket({ticket_key})")
 
     def create_subtask(self, parent_key: str, summary: str, assignee_id: str) -> Dict[str, Any]:
         if self.dry_run:
@@ -149,27 +168,43 @@ class JiraClient:
     def get_tickets_for_project(self) -> List[Dict[str, Any]]:
         if self.dry_run:
             return [
-                {'key': 'PROJ-1', 'summary': 'Setup CI pipeline', 'status': 'In Progress', 'assignee_id': 'alice_m', 'team_id': 'phoenix', 'is_blocked': False},
-                {'key': 'PROJ-2', 'summary': 'Implement authentication', 'status': 'To Do', 'assignee_id': 'bob_d', 'team_id': 'phoenix', 'is_blocked': False}
+                {'key': 'PROJ-1', 'summary': 'Setup CI pipeline',
+                 'status': 'In Progress', 'assignee_id': 'alice_m',
+                 'team_id': 'phoenix', 'is_blocked': False},
+                {'key': 'PROJ-2', 'summary': 'Implement authentication',
+                 'status': 'To Do', 'assignee_id': 'bob_d',
+                 'team_id': 'phoenix', 'is_blocked': False},
+                {'key': 'PROJ-3', 'summary': 'Develop API endpoints',
+                 'status': 'In Review', 'assignee_id': 'claire_v',
+                 'team_id': 'phoenix', 'is_blocked': False},
             ]
 
-        url = (f"{self.base_url}/rest/api/3/search"
-               f"?jql=project={self.project_key}+AND+statusCategory!=Done"
-               f"&maxResults=50&fields=summary,status,assignee")
-        headers = self._get_auth_headers()
-        response = requests.get(url, headers=headers, timeout=15)
-        data = self._handle_response(response, 'get_tickets_for_project')
-
+        # Nouvel endpoint Atlassian — POST /rest/api/3/search/jql
+        url = f"{self.base_url}/rest/api/3/search/jql"
+        payload = {
+            "jql": (f"project = {self.project_key} "
+                    f"AND statusCategory != Done "
+                    f"ORDER BY updated DESC"),
+            "maxResults": 50,
+            "fields": ["summary", "status", "assignee"]
+        }
+        r = requests.post(
+            url,
+            headers=self._get_auth_headers(),
+            json=payload,
+            timeout=15
+        )
+        data = self._handle_response(r, "get_tickets_for_project")
         tickets = []
         for issue in data.get('issues', []):
             fields = issue.get('fields', {})
             assignee = fields.get('assignee') or {}
             tickets.append({
-                'key': issue.get('key'),
+                'key': issue['key'],
                 'summary': fields.get('summary', ''),
                 'status': fields.get('status', {}).get('name', 'To Do'),
                 'assignee_id': assignee.get('accountId', ''),
-                'team_id': self.project_key.lower(),
                 'is_blocked': False
             })
+        logger.info("get_tickets_for_project : %d ticket(s) récupéré(s)", len(tickets))
         return tickets

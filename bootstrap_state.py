@@ -40,8 +40,13 @@ def bootstrap(project_key: str, force_dry_run: bool = False) -> None:
                 'role': m.get('role', 'dev')
             }
 
+    # Récupérer le premier team_id disponible dans teams.yaml comme valeur par défaut
+    default_team_id = teams_config.get('teams', [{}])[0].get('id', 'phoenix')
+
     tickets: dict = {}
     for t in tickets_raw:
+        # Remplacer team_id généré par le vrai team_id de la config
+        t['team_id'] = default_team_id
         tickets[t['key']] = t
 
     state = {
