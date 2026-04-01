@@ -27,7 +27,7 @@ def test_bootstrap_dry_run_creates_state():
         try:
             os.chdir(tmppath)
             from bootstrap_state import bootstrap
-            bootstrap(project_key='PROJ', force_dry_run=True)
+            bootstrap(['PROJ'], force_dry_run=True)
 
             # Vérifier le résultat
             state_file = tmppath / 'state.json'

@@ -1,40 +1,60 @@
 teams:
   - id: phoenix
     name: "Team Phoenix"
+    jira_project_key: "POT"
     members:
-      - id: alice_m
-        display_name: "Alice Martin"
+      - id: lionel_d
+        display_name: "Lionel Dubois"
         role: lead
         availability: available
         jira_account_id: "5d3b1c6375218c0c20adb6c1"
-      - id: bob_d
-        display_name: "Bob Dupont"
-        role: dev
+      - id: Fatou
+        display_name: "Fatou"
+        role: BA
         availability: available
-        jira_account_id: ""
-      - id: claire_v
-        display_name: "Claire Vidal"
-        role: dev
+        jira_account_id: "712020:d218ee80-d2b6-416a-92de-3849cc14ca55"
+      - id: gala
+        display_name: "Gala"
+        role: QA
         availability: available
-        jira_account_id: ""
-      - id: david_r
-        display_name: "David Renard"
-        role: qa
+        jira_account_id: "712020:c385be9b-34cb-4ee5-8d75-5c5d3a926009"
+      - id: paul
+        display_name: "Paul"
+        role: DEV
         availability: available
-        jira_account_id: ""
+        jira_account_id: "712020:b977ae3a-248c-463d-9ec3-5a50fea35327"
+      - id: pierre
+        display_name: "Pierre"
+        role: DEV
+        availability: available
+        jira_account_id: "712020:4637228e-bd9f-4d5b-a8f9-814764da73ce"
 
   - id: nebula
     name: "Team Nebula"
+    jira_project_key: "POT"
     members:
-      - id: emma_b
-        display_name: "Emma Bernard"
+      - id: lionel_d
+        display_name: "Lionel Dubois"
         role: lead
         availability: available
-      - id: felix_g
-        display_name: "Félix Garcia"
-        role: dev
+        jira_account_id: "5d3b1c6375218c0c20adb6c1"
+      - id: Fatou
+        display_name: "Fatou"
+        role: BA
         availability: available
-      - id: grace_l
-        display_name: "Grace Lambert"
-        role: dev
+        jira_account_id: "712020:d218ee80-d2b6-416a-92de-3849cc14ca55"
+      - id: gala
+        display_name: "Gala"
+        role: QA
         availability: available
+        jira_account_id: "712020:c385be9b-34cb-4ee5-8d75-5c5d3a926009"
+      - id: paul
+        display_name: "Paul"
+        role: DEV
+        availability: available
+        jira_account_id: "712020:b977ae3a-248c-463d-9ec3-5a50fea35327"
+      - id: pierre
+        display_name: "Pierre"
+        role: DEV
+        availability: available
+        jira_account_id: "712020:4637228e-bd9f-4d5b-a8f9-814764da73ce"

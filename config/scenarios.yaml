@@ -1,36 +1,80 @@
+# Phase 5A — 7 scénarios enrichis avec pondération réaliste
 scenarios:
-  - id: add_comment
+
+  - id: mise_a_jour_progression
     type: add_comment
-    weight: 70
-    description: "Un membre de l'équipe ajoute un commentaire de suivi sur un ticket"
+    weight: 25
+    description: "Commentaire de suivi d'un DEV sur une Story en IN PROGRESS"
+    constraints:
+      issue_types: ["Story", "Feature"]
+      statuses: ["IN PROGRESS"]
+      actor_roles: ["DEV", "lead"]
 
-  - id: change_status
+  - id: synthese_epic
+    type: add_comment
+    weight: 12
+    description: "Commentaire de suivi du Lead sur une Epic en cours"
+    constraints:
+      issue_types: ["Epic"]
+      statuses: ["IN PROGRESS", "TO DO", "IDEA"]
+      actor_roles: ["lead", "BA"]
+
+  - id: engagement
     type: change_status
-    weight: 30
-    description: "Un ticket avance dans le workflow (To Do → In Progress → In Review → Done)"
+    weight: 20
+    description: "Passage d'un ticket de TO DO / IDEA à IN PROGRESS"
+    constraints:
+      issue_types: ["Story", "Bug", "Task", "Feature", "Epic"]
+      statuses: ["TO DO", "IDEA"]
+      target_status: "IN PROGRESS"
+      actor_roles: ["DEV", "lead", "BA"]
 
-  # Les autres scénarios commentés pour le premier test live
-  # - id: change_assignee
-  #   type: change_assignee
-  #   weight: 10
-  #   description: "Un ticket est réassigné à un autre membre de l'équipe"
-  #
-  # - id: block_ticket
-  #   type: block_ticket
-  #   weight: 8
-  #   description: "Un ticket est bloqué — le membre explique le blocage en commentaire"
-  #
-  # - id: set_absence
-  #   type: set_absence
-  #   weight: 4
-  #   description: "Un membre part en absence, ses tickets ouverts sont réassignés"
-  #
-  # - id: return_from_absence
-  #   type: return_from_absence
-  #   weight: 4
-  #   description: "Un membre revient d'absence et redevient disponible"
-  #
-  # - id: add_subtask
-  #   type: add_subtask
-  #   weight: 4
-  #   description: "Une sous-tâche est créée sur un ticket existant"
+  - id: demande_review
+    type: change_status
+    weight: 15
+    description: "Passage de IN PROGRESS à IN REVIEW — DEV ou Lead uniquement"
+    constraints:
+      issue_types: ["Story", "Bug", "Feature"]
+      statuses: ["IN PROGRESS"]
+      target_status: "IN REVIEW"
+      actor_roles: ["DEV", "lead"]
+
+  - id: finalisation
+    type: change_status
+    weight: 12
+    description: "Passage de IN REVIEW à DONE — QA, BA ou Lead uniquement"
+    constraints:
+      issue_types: ["Story", "Bug", "Task", "Feature"]
+      statuses: ["IN REVIEW"]
+      target_status: "DONE"
+      actor_roles: ["QA", "BA", "lead"]
+      guard: "no_open_subtasks"
+
+  - id: precision_qa
+    type: add_comment
+    weight: 10
+    description: "Commentaire d'un QA sur un ticket en IN REVIEW"
+    constraints:
+      issue_types: ["Story", "Bug", "Feature"]
+      statuses: ["IN REVIEW"]
+      actor_roles: ["QA", "lead"]
+
+  - id: blocage
+    type: change_status
+    weight: 8
+    description: "Passage au statut BLOCKED avec commentaire IA obligatoire"
+    constraints:
+      issue_types: ["Story", "Bug", "Feature"]
+      statuses: ["IN PROGRESS", "IN REVIEW"]
+      target_status: "BLOCKED"
+      actor_roles: ["DEV", "QA", "lead"]
+      requires_ai_comment: true
+
+  - id: passage_de_relais
+    type: change_assignee
+    weight: 10
+    description: "Réassignation d'un ticket en cours à un autre membre"
+    constraints:
+      issue_types: ["Story", "Bug", "Task", "Feature"]
+      statuses: ["IN PROGRESS", "IN REVIEW", "BLOCKED"]
+      actor_roles: ["lead", "DEV", "BA"]

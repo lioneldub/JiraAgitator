@@ -27,53 +27,121 @@ class ScenarioEngine:
 
     def build_event(self, scenario: Dict[str, Any], state: Dict[str, Any], teams_config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Construit un événement prêt à être exécuté."""
-        scenario_type = scenario.get('type')
+        constraints = scenario.get('constraints', {})
+        allowed_types = constraints.get('issue_types')
+        allowed_statuses = constraints.get('statuses')
+        actor_roles = constraints.get('actor_roles')
+        target_status = constraints.get('target_status')
+        guard = constraints.get('guard')
 
-        for team in teams_config.get('teams', []):
-            team_id = team.get('id')
-            members = [m for m in team.get('members', []) if state.get('members', {}).get(m['id'], {}).get('availability') == 'available']
-            if not members:
+        # 1. Filtrer les tickets candidats
+        candidates = []
+        for ticket in state.get('tickets', {}).values():
+            if allowed_types and ticket.get('issue_type') not in allowed_types:
                 continue
-            if scenario_type in ('add_comment', 'change_status', 'change_assignee', 'block_ticket', 'add_subtask'):
-                tickets = [t for t in state.get('tickets', {}).values() if t.get('team_id') == team_id and t.get('status') != 'Done']
-                if not tickets:
+            # Comparaison insensible à la casse pour les statuts
+            ticket_status = ticket.get('status', '').strip().upper()
+            if allowed_statuses:
+                allowed_upper = [s.strip().upper() for s in allowed_statuses]
+                if ticket_status not in allowed_upper:
                     continue
-            else:
-                tickets = []
+            # Pareil pour status_category
+            ticket_cat = ticket.get('status_category', '').strip().upper()
+            if ticket_cat == 'DONE':
+                continue
+            if guard == 'no_open_subtasks':
+                subtasks = ticket.get('subtask_keys', [])
+                open_subs = [t for t in subtasks if state.get('tickets', {}).get(t, {}).get('status_category') == 'IN PROGRESS']
+                if open_subs:
+                    continue
+            candidates.append(ticket)
 
-            member = random.choice(members)
-            ticket = random.choice(tickets) if tickets else None
+        if not candidates and scenario.get('type') not in ('set_absence', 'return_from_absence'):
+            logger.info("Aucun ticket candidat pour le scénario '%s'", scenario.get('id'))
+            return None
 
-            if scenario_type in ('set_absence', 'return_from_absence'):
-                return {
-                    'type': scenario_type,
-                    'team_id': team_id,
-                    'member_id': member['id'],
-                    'member_name': member['display_name'],
-                    'member_role': member.get('role', 'dev'),
-                    'ticket_key': None,
-                    'ticket_summary': None,
-                    'context': {},
-                    'ai_content': None
-                }
+        # 2. Choisir un ticket si nécessaire
+        ticket = random.choice(candidates) if candidates else None
+        team_id = ticket.get('team_id') if ticket else None
 
-            if not ticket:
+        # 3. Filtrer les membres selon rôle et équipe
+        available_members = []
+        for member_id, member in state.get('members', {}).items():
+            if member.get('availability') != 'available':
+                continue
+            team_ids = member.get('team_ids') if member.get('team_ids') else [member.get('team_id', '')]
+            if not isinstance(team_ids, list):
+                team_ids = [team_ids]
+            if team_id and team_id not in team_ids:
                 continue
 
+            # role from state or fallback to team config
+            role = member.get('role')
+            if not role:
+                for team in teams_config.get('teams', []):
+                    for m in team.get('members', []):
+                        if m.get('id') == member_id:
+                            role = m.get('role')
+                            break
+                    if role:
+                        break
+            role = role or 'dev'
+
+            if actor_roles and role.lower() not in [r.lower() for r in actor_roles]:
+                continue
+
+            available_members.append({'id': member_id, **member, 'role': role})
+
+        if not available_members:
+            logger.info("Aucun membre disponible pour le scénario '%s'", scenario.get('id'))
+            return None
+
+        member = random.choice(available_members)
+
+        if scenario.get('type') in ('set_absence', 'return_from_absence'):
             return {
-                'type': scenario_type,
+                'type': scenario.get('type'),
                 'team_id': team_id,
                 'member_id': member['id'],
-                'member_name': member['display_name'],
+                'member_name': member.get('display_name'),
                 'member_role': member.get('role', 'dev'),
-                'ticket_key': ticket['key'],
-                'ticket_summary': ticket['summary'],
-                'context': {
-                    'current_status': ticket.get('status'),
-                    'is_blocked': ticket.get('is_blocked', False)
-                },
+                'ticket_key': None,
+                'ticket_summary': None,
+                'context': {},
                 'ai_content': None
             }
 
-        logger.info("Pas d'événement possible pour le scénario %s", scenario_type)
-        return None
+        if not ticket:
+            logger.info("Aucun ticket trouvé pour le scénario '%s'", scenario.get('id'))
+            return None
+
+        logger.info(
+            "Scénario '%s' → ticket %s [%s] statut '%s' assigné à %s (%s)",
+            scenario.get('id'),
+            ticket['key'],
+            ticket.get('issue_type', '?'),
+            ticket.get('status', '?'),
+            member.get('display_name', member['id']),
+            member.get('role', '?')
+        )
+        return {
+            'type': scenario.get('type'),
+            'scenario_id': scenario.get('id'),
+            'team_id': team_id,
+            'member_id': member['id'],
+            'member_name': member.get('display_name', member['id']),
+            'member_role': member.get('role', 'dev'),
+            'ticket_key': ticket['key'],
+            'ticket_summary': ticket.get('summary', ''),
+            'issue_type': ticket.get('issue_type', 'Story'),
+            'context': {
+                'current_status': ticket.get('status'),
+                'status_category': ticket.get('status_category'),
+                'target_status': target_status,
+                'is_blocked': ticket.get('is_blocked', False),
+                'priority': ticket.get('priority', 'Medium'),
+                'epic_key': ticket.get('epic_key'),
+                'requires_ai_comment': constraints.get('requires_ai_comment', False)
+            },
+            'ai_content': None
+        }

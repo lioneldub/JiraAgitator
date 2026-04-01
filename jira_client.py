@@ -6,6 +6,8 @@ from typing import Any, Dict, List
 import requests
 from logging import getLogger
 
+from state_manager import StateManager
+
 logger = getLogger(__name__)
 
 class JiraClient:
@@ -48,6 +50,19 @@ class JiraClient:
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         }
+
+    def _get_status_category(self, status: str) -> str:
+        """Retourne la catégorie normalisée d'un statut Jira (insensible à la casse)."""
+        s = status.strip().upper()
+        todo_statuses     = {'IDEA', 'TO DO', 'TODO', 'OPEN', 'BACKLOG'}
+        done_statuses     = {'DONE', 'CLOSED', 'CANCELLED', 'CANCELED',
+                             'RESOLVED', 'COMPLETE', 'COMPLETED'}
+        if s in todo_statuses:
+            return 'TO DO'
+        elif s in done_statuses:
+            return 'DONE'
+        else:
+            return 'IN PROGRESS'
 
     def _handle_response(self, response: requests.Response, action: str) -> Dict[str, Any]:
         if response.status_code in (200, 201, 204):
@@ -165,28 +180,47 @@ class JiraClient:
         response = requests.post(url, json=payload, headers=headers, timeout=15)
         return self._handle_response(response, f'create_subtask({parent_key})')
 
-    def get_tickets_for_project(self) -> List[Dict[str, Any]]:
+    def get_tickets_for_project(self,
+                                 project_key: str | None = None) -> List[Dict[str, Any]]:
+        """Récupère les tickets ouverts. project_key override self.project_key si fourni."""
+        key = project_key or self.project_key
         if self.dry_run:
             return [
-                {'key': 'PROJ-1', 'summary': 'Setup CI pipeline',
-                 'status': 'In Progress', 'assignee_id': 'alice_m',
-                 'team_id': 'phoenix', 'is_blocked': False},
-                {'key': 'PROJ-2', 'summary': 'Implement authentication',
-                 'status': 'To Do', 'assignee_id': 'bob_d',
-                 'team_id': 'phoenix', 'is_blocked': False},
-                {'key': 'PROJ-3', 'summary': 'Develop API endpoints',
-                 'status': 'In Review', 'assignee_id': 'claire_v',
-                 'team_id': 'phoenix', 'is_blocked': False},
+                {'key': f'{key}-1', 'summary': 'Setup CI pipeline',
+                 'issue_type': 'Story', 'status': 'IN PROGRESS',
+                 'status_category': 'IN PROGRESS', 'priority': 'High',
+                 'assignee_id': '', 'is_blocked': False,
+                 'epic_key': None, 'parent_key': None,
+                 'subtask_keys': [], 'linked_issues': [],
+                 'story_points': 5, 'last_updated': None},
+                {'key': f'{key}-2', 'summary': 'Implement authentication',
+                 'issue_type': 'Epic', 'status': 'TO DO',
+                 'status_category': 'TO DO', 'priority': 'High',
+                 'assignee_id': '', 'is_blocked': False,
+                 'epic_key': None, 'parent_key': None,
+                 'subtask_keys': [], 'linked_issues': [],
+                 'story_points': None, 'last_updated': None},
+                {'key': f'{key}-3', 'summary': 'Fix login timeout bug',
+                 'issue_type': 'Bug', 'status': 'IN REVIEW',
+                 'status_category': 'IN PROGRESS', 'priority': 'Medium',
+                 'assignee_id': '', 'is_blocked': False,
+                 'epic_key': None, 'parent_key': None,
+                 'subtask_keys': [], 'linked_issues': [],
+                 'story_points': 3, 'last_updated': None},
             ]
 
         # Nouvel endpoint Atlassian — POST /rest/api/3/search/jql
         url = f"{self.base_url}/rest/api/3/search/jql"
         payload = {
-            "jql": (f"project = {self.project_key} "
+            "jql": (f"project = {key} "
                     f"AND statusCategory != Done "
                     f"ORDER BY updated DESC"),
-            "maxResults": 50,
-            "fields": ["summary", "status", "assignee"]
+            "maxResults": 100,
+            "fields": [
+                "summary", "status", "assignee", "issuetype", "priority",
+                "parent", "subtasks", "issuelinks", "customfield_10016",
+                "customfield_10014"
+            ]
         }
         r = requests.post(
             url,
@@ -194,17 +228,112 @@ class JiraClient:
             json=payload,
             timeout=15
         )
-        data = self._handle_response(r, "get_tickets_for_project")
+        data = self._handle_response(r, f"get_tickets_for_project({key})")
+
         tickets = []
+        sm = StateManager()
         for issue in data.get('issues', []):
             fields = issue.get('fields', {})
             assignee = fields.get('assignee') or {}
+            raw_status = fields.get('status', {}).get('name', 'TO DO')
+            status_name = raw_status.strip().upper()   # normalisation immédiate
+
+            # Résolution de l'epic parent
+            epic_key = None
+            parent = fields.get('parent')
+            parent_key = None
+            if parent:
+                parent_type = (parent.get('fields', {})
+                               .get('issuetype', {}).get('name', ''))
+                if parent_type == 'Epic':
+                    epic_key = parent.get('key')
+                else:
+                    parent_key = parent.get('key')
+            # Fallback : champs custom epic link
+            if not epic_key:
+                epic_key = (fields.get('customfield_10014')
+                            or fields.get('customfield_10008'))
+
+            subtask_keys = [s['key'] for s in fields.get('subtasks', [])]
+
+            linked_issues = []
+            for link in fields.get('issuelinks', []):
+                if 'outwardIssue' in link:
+                    linked_issues.append({
+                        'key': link['outwardIssue']['key'],
+                        'link_type': link.get('type', {}).get('outward', 'relates to')
+                    })
+                if 'inwardIssue' in link:
+                    linked_issues.append({
+                        'key': link['inwardIssue']['key'],
+                        'link_type': link.get('type', {}).get('inward', 'is blocked by')
+                    })
+
+            story_points = (fields.get('customfield_10016')
+                            or fields.get('customfield_10028'))
+
             tickets.append({
                 'key': issue['key'],
                 'summary': fields.get('summary', ''),
-                'status': fields.get('status', {}).get('name', 'To Do'),
+                'issue_type': fields.get('issuetype', {}).get('name', 'Story'),
+                'status': status_name,
+                'status_category': sm.get_status_category(status_name),
+                'priority': fields.get('priority', {}).get('name', 'Medium'),
                 'assignee_id': assignee.get('accountId', ''),
-                'is_blocked': False
+                'epic_key': epic_key,
+                'parent_key': parent_key,
+                'subtask_keys': subtask_keys,
+                'linked_issues': linked_issues,
+                'story_points': story_points,
+                'is_blocked': False,
+                'last_updated': None
             })
-        logger.info("get_tickets_for_project : %d ticket(s) récupéré(s)", len(tickets))
+
+        logger.info("get_tickets_for_project(%s) : %d ticket(s)", key, len(tickets))
         return tickets
+
+    def update_issue_field(self, ticket_key: str, field_name: str, value) -> Dict[str, Any]:
+        """Met à jour un champ d'un ticket (priority, story_points, description…)."""
+        if self.dry_run:
+            return self._dry_log('update_field', ticket_key, f'{field_name} = {value}')
+        url = f"{self.base_url}/rest/api/3/issue/{ticket_key}"
+        r = requests.put(
+            url,
+            headers=self._get_auth_headers(),
+            json={"fields": {field_name: value}},
+            timeout=15
+        )
+        return self._handle_response(r, f"update_issue_field({ticket_key}.{field_name})")
+
+    def create_issue_link(self, from_key: str, to_key: str, link_type: str) -> Dict[str, Any]:
+        """Crée un lien entre deux tickets."""
+        if self.dry_run:
+            return self._dry_log('create_link', from_key, f'{link_type} → {to_key}')
+        url = f"{self.base_url}/rest/api/3/issueLink"
+        r = requests.post(
+            url,
+            headers=self._get_auth_headers(),
+            json={
+                "type": {"name": link_type},
+                "inwardIssue": {"key": from_key},
+                "outwardIssue": {"key": to_key}
+            },
+            timeout=15
+        )
+        return self._handle_response(r, f"create_issue_link({from_key}→{to_key})")
+
+    def create_issue(self, fields: Dict[str, Any]) -> Dict[str, Any]:
+        """Crée un nouveau ticket Jira."""
+        if self.dry_run:
+            summary = fields.get('summary', 'Nouveau ticket')
+            issue_type = fields.get('issuetype', {}).get('name', 'Story')
+            return self._dry_log('create_issue', self.project_key,
+                                 f'{issue_type}: "{summary[:60]}"')
+        url = f"{self.base_url}/rest/api/3/issue"
+        r = requests.post(
+            url,
+            headers=self._get_auth_headers(),
+            json={"fields": fields},
+            timeout=15
+        )
+        return self._handle_response(r, "create_issue")
