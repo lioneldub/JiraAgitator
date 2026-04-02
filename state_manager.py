@@ -147,3 +147,31 @@ class StateManager:
             return
         ticket['assignee_id'] = new_assignee_id
         self.save(state)
+
+    def sync_ticket_after_event(self, ticket_key: str,
+                                 updates: dict) -> None:
+        """
+        Met à jour atomiquement tous les champs d'un ticket après un événement.
+        updates : dict des champs à modifier (status, assignee_id, is_blocked…)
+        Recalcule automatiquement status_category et last_updated.
+        """
+        import datetime
+        state = self.load()
+        ticket = state.get('tickets', {}).get(ticket_key)
+        if not ticket:
+            logger.warning('sync_ticket_after_event : ticket %s introuvable',
+                           ticket_key)
+            return
+        for field, value in updates.items():
+            ticket[field] = value
+        # Recalcul automatique de status_category si status a changé
+        if 'status' in updates:
+            ticket['status_category'] = self.get_status_category(
+                updates['status']
+            )
+        # Synchronisation is_blocked avec le statut
+        if 'status' in updates:
+            ticket['is_blocked'] = updates['status'].upper() == 'BLOCKED'
+        # Timestamp systématique
+        ticket['last_updated'] = datetime.datetime.utcnow().isoformat()
+        self.save(state)

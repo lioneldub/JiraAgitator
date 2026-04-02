@@ -87,6 +87,39 @@ def bootstrap(project_keys: list[str], force_dry_run: bool = False) -> None:
                     'jira_account_id': m.get('jira_account_id', '')
                 }
 
+    # Construire le reverse-map accountId → member_id pour résoudre les assignees
+    account_to_member: dict[str, str] = {}
+    for mid, data in members.items():
+        aid = data.get('jira_account_id', '')
+        if aid:
+            account_to_member[aid.lower()] = mid
+
+    def resolve_assignee(raw_assignee: str) -> str:
+        if not raw_assignee:
+            return ''
+        low = raw_assignee.strip().lower()
+        # accountId exact (cas insensible)
+        if low in account_to_member:
+            return account_to_member[low]
+        # member_id direct
+        if raw_assignee in members:
+            return raw_assignee
+        # member_id case-insens
+        for mid in members:
+            if mid.lower() == low:
+                return mid
+        # display_name case-insens
+        for mid, data in members.items():
+            if data.get('display_name', '').strip().lower() == low:
+                return mid
+        # jira_account_id case-insens
+        for mid, data in members.items():
+            if data.get('jira_account_id', '').strip().lower() == low:
+                return mid
+        # inconnu
+        return ''
+
+
     # Agréger les tickets de tous les projets
     all_tickets: dict = {}
     for project_key in project_keys:
@@ -95,6 +128,17 @@ def bootstrap(project_keys: list[str], force_dry_run: bool = False) -> None:
         team_id = _find_team_for_project(project_key, teams_config)
         tickets_raw = jira.get_tickets_for_project(project_key=project_key)
         for t in tickets_raw:
+            # Résoudre l'assignee depuis accountId vers member_id
+            raw_assignee = t.get('assignee_id', '')
+            resolved_id = resolve_assignee(raw_assignee)
+            t['assignee_id'] = resolved_id
+            # Si non résolu (accountId Jira non dans teams.yaml), logger un warning
+            if not resolved_id and raw_assignee:
+                logger.warning(
+                    "Ticket %s : assignee accountId '%s' non résolu "
+                    "— vérifier jira_account_id dans teams.yaml",
+                    t['key'], raw_assignee[:20]
+                )
             t['team_id'] = team_id
             all_tickets[t['key']] = t
         logger.info("  → %d ticket(s) récupéré(s) pour %s (équipe: %s)",
@@ -106,6 +150,13 @@ def bootstrap(project_keys: list[str], force_dry_run: bool = False) -> None:
         'tickets': all_tickets
     }
     state_mgr.save(state)
+
+    # Rattacher les tickets orphelins à des Epics
+    _attach_orphans_to_epics(all_tickets)
+
+    # Re-sauvegarder après rattachement
+    state_mgr.save(state)
+
     logger.info("Bootstrap terminé — %d ticket(s) total, %d membre(s)",
                 len(all_tickets), len(members))
 
@@ -114,6 +165,32 @@ def bootstrap(project_keys: list[str], force_dry_run: bool = False) -> None:
     type_counts = Counter(t.get('issue_type', '?') for t in all_tickets.values())
     for itype, count in sorted(type_counts.items()):
         logger.info("  %s : %d ticket(s)", itype, count)
+
+
+def _attach_orphans_to_epics(tickets: dict) -> None:
+    """
+    Rattache les Stories et Bugs sans epic_key à une Epic active
+    du même projet (80% de probabilité — laisse 20% d'orphelins volontaires).
+    """
+    import random
+    # Indexer les Epics actives par projet
+    epics_by_project: dict[str, list[str]] = {}
+    for key, ticket in tickets.items():
+        if (ticket.get('issue_type') == 'Epic'
+                and ticket.get('status_category') != 'DONE'):
+            proj = key.split('-')[0]
+            epics_by_project.setdefault(proj, []).append(key)
+
+    # Rattacher les orphelins
+    for key, ticket in tickets.items():
+        if ticket.get('issue_type') not in ('Story', 'Bug', 'Feature'):
+            continue
+        if ticket.get('epic_key'):
+            continue   # déjà rattaché
+        proj = key.split('-')[0]
+        available_epics = epics_by_project.get(proj, [])
+        if available_epics and random.random() < 0.80:
+            ticket['epic_key'] = random.choice(available_epics)
 
 
 def _find_team_for_project(project_key: str, teams_config: dict) -> str:

@@ -30,7 +30,34 @@ STUB_RESPONSES = {
     ],
     'add_subtask': [
         "Création d'une sous-tâche pour découper le travail restant."
-    ]
+    ],
+    'create_issue': [
+        "Anomalie détectée sur le module de paiement — comportement inattendu en production.",
+        "Régression sur l'authentification après déploiement v2.3.1.",
+        "Performance dégradée sur l'endpoint /api/orders depuis ce matin.",
+        "Erreur 500 intermittente sur la page de profil utilisateur.",
+        "Problème de synchronisation entre le cache Redis et la base de données.",
+        "Correctif nécessaire sur la gestion des timeouts réseau.",
+        "Nouveau besoin identifié lors de la démo client — à planifier.",
+        "Optimisation requise sur le pipeline de traitement des fichiers.",
+    ],
+    'create_subtask': [
+        "Écrire les tests unitaires pour la nouvelle fonctionnalité.",
+        "Documenter l'API et mettre à jour le swagger.",
+        "Valider le comportement en environnement de staging.",
+        "Revoir la gestion des cas d'erreur dans le module.",
+        "Optimiser la requête SQL identifiée comme lente.",
+        "Intégrer le retour de review dans le code.",
+    ],
+    'create_link': [
+        "Lien de dépendance créé — en attente de la résolution du ticket bloquant.",
+        "Relation identifiée entre ces deux tickets lors de l'affinement.",
+    ],
+    'update_field': [
+        "Repriorisation suite aux retours du client.",
+        "Estimation révisée après découverte de la complexité réelle.",
+        "Mise à jour de la priorité après discussion avec le PO.",
+    ],
 }
 
 from providers.base_provider import BaseProvider

@@ -138,20 +138,33 @@ class JiraClient:
 
     def assign_ticket(self, ticket_key: str, account_id: str) -> Dict[str, Any]:
         """Réassigne le ticket. Ignore silencieusement si accountId inconnu."""
+        # Si account_id est déjà un Jira accountId valide, on l'utilise tel quel.
         resolved_id = self._account_id_map.get(account_id, account_id)
 
         if self.dry_run:
             return self._dry_log('change_assignee', ticket_key,
                                  f'assign to {account_id} (accountId: {resolved_id})')
 
-        if not resolved_id or resolved_id == account_id:
-            # account_id non résolu — membre fictif sans accountId Jira réel
+        if not resolved_id:
             logger.warning(
                 "assign_ticket ignoré pour %s — accountId non résolu pour '%s'. "
                 "Remplir jira_account_id dans config/teams.yaml.",
                 ticket_key, account_id
             )
             return {'status': 'skipped', 'reason': 'unresolved_account_id'}
+
+        # Si resolved_id est toujours le même et que nous n'avons pas de mapping, c'est peut-être déjà un ID Jira.
+        if account_id == resolved_id and account_id in self._account_id_map.values():
+            pass
+        elif account_id == resolved_id and account_id not in self._account_id_map.values():
+            # Si on ne le reconnaît pas du tout, on skip pour éviter échec Jira.
+            logger.warning(
+                "assign_ticket ignoré pour %s — accountId non résolu pour '%s'. "
+                "Remplir jira_account_id dans config/teams.yaml.",
+                ticket_key, account_id
+            )
+            return {'status': 'skipped', 'reason': 'unresolved_account_id'}
+
 
         url = f"{self.base_url}/rest/api/3/issue/{ticket_key}/assignee"
         r = requests.put(
@@ -166,18 +179,35 @@ class JiraClient:
         if self.dry_run:
             return self._dry_log('add_subtask', parent_key, f'new subtask "{summary}" assigned to {assignee_id}')
 
-        url = f"{self.base_url}/rest/api/3/issue"
+        project_key = self.project_key
+        if parent_key and '-' in parent_key:
+            project_key = parent_key.split('-')[0]
+
         payload = {
             'fields': {
-                'project': {'key': self.project_key},
+                'project': {'key': project_key},
                 'parent': {'key': parent_key},
                 'summary': summary,
                 'issuetype': {'name': 'Sub-task'},
                 'assignee': {'accountId': assignee_id}
             }
         }
+
+        url = f"{self.base_url}/rest/api/3/issue"
         headers = self._get_auth_headers()
         response = requests.post(url, json=payload, headers=headers, timeout=15)
+
+        if response.status_code == 400:
+            try:
+                data = response.json()
+            except Exception:
+                data = {}
+            errors = data.get('errors', {})
+            if 'issuetype' in errors or 'issuetype' in (data.get('errorMessages') or []):
+                payload['fields']['issuetype'] = {'name': 'Task'}
+                payload['fields'].pop('parent', None)
+                response = requests.post(url, json=payload, headers=headers, timeout=15)
+
         return self._handle_response(response, f'create_subtask({parent_key})')
 
     def get_tickets_for_project(self,
@@ -230,13 +260,51 @@ class JiraClient:
         )
         data = self._handle_response(r, f"get_tickets_for_project({key})")
 
+        # Construire le reverse-map accountId → member_id depuis teams.yaml
+        import yaml
+        account_to_member: dict[str, str] = {}
+        teams_path = Path('config/teams.yaml')
+        if teams_path.exists():
+            with teams_path.open('r', encoding='utf-8') as f:
+                teams_config = yaml.safe_load(f) or {}
+                for team in teams_config.get('teams', []):
+                    for m in team.get('members', []):
+                        aid = m.get('jira_account_id', '')
+                        if aid:
+                            account_to_member[aid] = m['id']
+
         tickets = []
         sm = StateManager()
+
+        def resolve_assignee(raw_assignee_id: str) -> str:
+            if not raw_assignee_id:
+                return ''
+            low = raw_assignee_id.strip().lower()
+            if low in account_to_member:
+                return account_to_member[low]
+            # Si l'ID envoyé est déjà un member_id
+            if any(raw_assignee_id == m.get('id') for team in teams_config.get('teams', []) for m in team.get('members', [])):
+                return raw_assignee_id
+            # match display_name
+            for team in teams_config.get('teams', []):
+                for m in team.get('members', []):
+                    if m.get('display_name', '').strip().lower() == low:
+                        return m['id']
+                    if m.get('id', '').strip().lower() == low:
+                        return m['id']
+                    if m.get('jira_account_id', '').strip().lower() == low:
+                        return m['id']
+            return raw_assignee_id
+
         for issue in data.get('issues', []):
             fields = issue.get('fields', {})
             assignee = fields.get('assignee') or {}
             raw_status = fields.get('status', {}).get('name', 'TO DO')
             status_name = raw_status.strip().upper()   # normalisation immédiate
+            
+            # Résoudre l'assignee depuis accountId vers member_id
+            raw_assignee_id = assignee.get('accountId', '')
+            resolved_assignee = resolve_assignee(raw_assignee_id)
 
             # Résolution de l'epic parent
             epic_key = None
@@ -279,13 +347,13 @@ class JiraClient:
                 'status': status_name,
                 'status_category': sm.get_status_category(status_name),
                 'priority': fields.get('priority', {}).get('name', 'Medium'),
-                'assignee_id': assignee.get('accountId', ''),
+                'assignee_id': resolved_assignee,
                 'epic_key': epic_key,
                 'parent_key': parent_key,
                 'subtask_keys': subtask_keys,
                 'linked_issues': linked_issues,
                 'story_points': story_points,
-                'is_blocked': False,
+                'is_blocked': status_name.upper() == 'BLOCKED',
                 'last_updated': None
             })
 
@@ -309,31 +377,90 @@ class JiraClient:
         """Crée un lien entre deux tickets."""
         if self.dry_run:
             return self._dry_log('create_link', from_key, f'{link_type} → {to_key}')
+
+        def _post_link_payload(payload):
+            r = requests.post(
+                url,
+                headers=self._get_auth_headers(),
+                json=payload,
+                timeout=15
+            )
+            return r
+
         url = f"{self.base_url}/rest/api/3/issueLink"
-        r = requests.post(
-            url,
-            headers=self._get_auth_headers(),
-            json={
-                "type": {"name": link_type},
-                "inwardIssue": {"key": from_key},
-                "outwardIssue": {"key": to_key}
-            },
-            timeout=15
-        )
+        payload = {
+            "type": {"name": link_type.title()},
+            "inwardIssue": {"key": from_key},
+            "outwardIssue": {"key": to_key}
+        }
+
+        r = _post_link_payload(payload)
+        if r.status_code in (400, 404):
+            # fallback vers Blocks/Is blocked by si 1er type non supporté
+            if 'blocked' in link_type.lower():
+                alt_payload = {
+                    "type": {"name": "Blocks"},
+                    "inwardIssue": {"key": to_key},
+                    "outwardIssue": {"key": from_key}
+                }
+                r = _post_link_payload(alt_payload)
+            elif link_type.lower() in ('relates to', 'blocks'):
+                alt_payload = {
+                    "type": {"name": "Relates"},
+                    "inwardIssue": {"key": from_key},
+                    "outwardIssue": {"key": to_key}
+                }
+                r = _post_link_payload(alt_payload)
+
+        if r.status_code == 404:
+            logger.warning("create_issue_link skipped (%s→%s) HTTP 404, lien impossible", from_key, to_key)
+            return {}
+
         return self._handle_response(r, f"create_issue_link({from_key}→{to_key})")
 
     def create_issue(self, fields: Dict[str, Any]) -> Dict[str, Any]:
         """Crée un nouveau ticket Jira."""
+        # assurer la présence du project key
+        project_key = (fields.get('project', {}).get('key')
+                       or fields.get('project', {}).get('id')
+                       or self.project_key)
+        if project_key:
+            fields.setdefault('project', {'key': project_key})
+
         if self.dry_run:
             summary = fields.get('summary', 'Nouveau ticket')
             issue_type = fields.get('issuetype', {}).get('name', 'Story')
-            return self._dry_log('create_issue', self.project_key,
+            return self._dry_log('create_issue', project_key or self.project_key,
                                  f'{issue_type}: "{summary[:60]}"')
+
+        if not project_key:
+            raise ValueError('Jira create_issue requis project key non vide')
+
         url = f"{self.base_url}/rest/api/3/issue"
-        r = requests.post(
+        response = requests.post(
             url,
             headers=self._get_auth_headers(),
             json={"fields": fields},
             timeout=15
         )
-        return self._handle_response(r, "create_issue")
+
+        if response.status_code == 400:
+            data = {}
+            try:
+                data = response.json()
+            except Exception:
+                pass
+            errors = data.get('errors', {})
+            # Gestion « customfield non sur écran »
+            if any(k.startswith('customfield_') for k in errors):
+                for k in list(errors.keys()):
+                    if k.startswith('customfield_'):
+                        fields.pop(k, None)
+                response = requests.post(
+                    url,
+                    headers=self._get_auth_headers(),
+                    json={"fields": fields},
+                    timeout=15
+                )
+
+        return self._handle_response(response, "create_issue")

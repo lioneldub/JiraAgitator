@@ -78,3 +78,145 @@ scenarios:
       issue_types: ["Story", "Bug", "Task", "Feature"]
       statuses: ["IN PROGRESS", "IN REVIEW", "BLOCKED"]
       actor_roles: ["lead", "DEV", "BA"]
+
+  # --- Phase 5B — 14 nouveaux scénarios ---
+
+  - id: deblocage
+    type: change_status
+    weight: 9
+    description: "Passage de BLOCKED vers IN PROGRESS — déblocage d'un ticket"
+    constraints:
+      issue_types: ["Story", "Bug", "Feature", "Task"]
+      statuses: ["BLOCKED"]
+      target_status: "IN PROGRESS"
+      actor_roles: ["DEV", "lead", "BA"]
+
+  - id: rejet_review
+    type: change_status
+    weight: 7
+    description: "Retour d'un ticket de IN REVIEW vers IN PROGRESS après retour QA"
+    constraints:
+      issue_types: ["Story", "Bug", "Feature"]
+      statuses: ["IN REVIEW"]
+      target_status: "IN PROGRESS"
+      actor_roles: ["QA", "lead"]
+
+  - id: incident_run
+    type: create_issue
+    weight: 5
+    description: "Création d'un Bug Medium directement en TO DO (incident production)"
+    constraints:
+      actor_roles: ["QA", "lead", "DEV"]
+      issue_type_to_create: "Bug"
+      priority_to_create: "Medium"
+      initial_status: "TO DO"
+
+  - id: urgence_production
+    type: create_issue
+    weight: 3
+    description: "Création d'un Bug Highest passant immédiatement en IN PROGRESS"
+    constraints:
+      actor_roles: ["lead", "QA"]
+      issue_type_to_create: "Bug"
+      priority_to_create: "Highest"
+      initial_status: "IN PROGRESS"
+
+  - id: affinement_backlog
+    type: add_comment
+    weight: 8
+    description: "Commentaire d'affinement sur une Epic ou Story en TO DO / IDEA"
+    constraints:
+      issue_types: ["Epic", "Story", "Feature"]
+      statuses: ["TO DO", "IDEA"]
+      actor_roles: ["lead", "BA"]
+
+  - id: decomposition
+    type: create_subtask
+    weight: 5
+    description: "Création d'une sous-tâche sur une Story existante en IN PROGRESS"
+    constraints:
+      issue_types: ["Story", "Feature"]
+      statuses: ["IN PROGRESS"]
+      actor_roles: ["DEV", "lead"]
+
+  - id: lien_dependance
+    type: create_link
+    weight: 4
+    description: "Création d'un lien 'is blocked by' entre deux tickets"
+    constraints:
+      issue_types: ["Story", "Bug", "Feature"]
+      statuses: ["IN PROGRESS", "TO DO"]
+      actor_roles: ["lead", "DEV"]
+      link_type: "is blocked by"
+
+  - id: repriorisation
+    type: update_field
+    weight: 5
+    description: "Changement de priorité d'un ticket en TO DO"
+    constraints:
+      issue_types: ["Story", "Bug", "Feature", "Epic"]
+      statuses: ["TO DO", "IDEA"]
+      actor_roles: ["lead", "BA"]
+      field_to_update: "priority"
+
+  - id: alimentation_produit
+    type: create_issue
+    weight: 4
+    description: "Création d'une nouvelle User Story rattachée à une Epic existante"
+    constraints:
+      actor_roles: ["BA", "lead"]
+      issue_type_to_create: "Story"
+      priority_to_create: "Medium"
+      initial_status: "TO DO"
+      requires_epic: true
+
+  - id: bug_de_dev
+    type: create_issue
+    weight: 4
+    description: "Création d'un Bug lié à une Story pendant le cycle de dev"
+    constraints:
+      actor_roles: ["DEV", "QA"]
+      issue_type_to_create: "Bug"
+      priority_to_create: "Medium"
+      initial_status: "TO DO"
+      link_to_parent: true
+
+  - id: auto_assignation
+    type: change_assignee
+    weight: 6
+    description: "Un membre s'assigne lui-même un ticket en TO DO"
+    constraints:
+      issue_types: ["Story", "Bug", "Task", "Feature"]
+      statuses: ["TO DO", "IDEA"]
+      actor_roles: ["DEV", "BA", "lead"]
+      assign_to_self: true
+
+  - id: nettoyage
+    type: change_status
+    weight: 3
+    description: "Passage d'un vieux ticket en CANCELLED — tout statut sauf DONE"
+    constraints:
+      issue_types: ["Story", "Bug", "Task", "Feature"]
+      statuses: ["TO DO", "IDEA", "IN PROGRESS", "BLOCKED"]
+      target_status: "CANCELLED"
+      actor_roles: ["lead", "BA"]
+
+  - id: re_estimation
+    type: update_field
+    weight: 4
+    description: "Modification des Story Points d'un ticket en cours"
+    constraints:
+      issue_types: ["Story", "Feature", "Bug"]
+      statuses: ["TO DO", "IN PROGRESS", "BLOCKED"]
+      actor_roles: ["DEV", "lead", "BA"]
+      field_to_update: "story_points"
+
+  - id: relance_lead
+    type: add_comment
+    weight: 6
+    description: "Commentaire du Lead sur un ticket stagnant (last_updated > 3 jours)"
+    constraints:
+      issue_types: ["Story", "Bug", "Feature", "Epic"]
+      statuses: ["IN PROGRESS", "BLOCKED"]
+      actor_roles: ["lead"]
+      guard: "stagnant_ticket"

@@ -10,13 +10,81 @@ class ScenarioEngine:
     """Moteur de scénarios pour choisir et construire des événements."""
 
     def __init__(self, scenarios_file: str = 'config/scenarios.yaml') -> None:
-        self.scenarios_path = Path(scenarios_file)
+        # Use absolute path from module directory if relative path is provided
+        if scenarios_file == 'config/scenarios.yaml':
+            project_root = Path(__file__).parent
+            self.scenarios_path = project_root / scenarios_file
+        else:
+            self.scenarios_path = Path(scenarios_file)
         self.scenarios = self._load_scenarios()
 
     def _load_scenarios(self) -> List[Dict[str, Any]]:
         with self.scenarios_path.open('r', encoding='utf-8') as f:
             data = yaml.safe_load(f)
         return data.get('scenarios', [])
+
+    def _pick_ticket_weighted(self, candidates: list[dict]) -> dict:
+        """
+        Choisit un ticket en favorisant ceux non touchés récemment.
+        Un ticket sans last_updated ou mis à jour il y a longtemps a plus de poids.
+        """
+        import datetime
+        import random
+
+        now = datetime.datetime.utcnow()
+        weights = []
+        for ticket in candidates:
+            last = ticket.get('last_updated')
+            if not last:
+                # Jamais touché = poids maximum
+                weights.append(100)
+            else:
+                try:
+                    dt = datetime.datetime.fromisoformat(last)
+                    age_hours = max(1, (now - dt).total_seconds() / 3600)
+                    # Poids proportionnel à l'ancienneté, plafonné à 100
+                    weights.append(min(100, int(age_hours)))
+                except ValueError:
+                    weights.append(50)
+
+        return random.choices(candidates, weights=weights, k=1)[0]
+
+    def _pick_project_balanced(self, candidates: list[dict],
+                                state: dict) -> list[dict]:
+        """
+        Filtre les candidats pour favoriser le projet le moins récemment actif.
+        Retourne une sous-liste des candidats du projet prioritaire.
+        """
+        import collections
+        # Compter les last_updated récents par projet
+        project_activity: dict[str, float] = collections.defaultdict(float)
+        import datetime
+        now = datetime.datetime.utcnow()
+        for ticket in state.get('tickets', {}).values():
+            last = ticket.get('last_updated')
+            if last:
+                try:
+                    dt = datetime.datetime.fromisoformat(last)
+                    age = (now - dt).total_seconds()
+                    proj = ticket['key'].split('-')[0]
+                    # Accumuler l'activité récente (plus c'est récent, plus c'est élevé)
+                    project_activity[proj] += max(0, 86400 - age)
+                except ValueError:
+                    pass
+
+        # Identifier les projets représentés dans les candidats
+        candidate_projects = list({t['key'].split('-')[0] for t in candidates})
+        if len(candidate_projects) <= 1:
+            return candidates
+
+        # Choisir le projet le moins actif récemment
+        least_active = min(candidate_projects,
+                           key=lambda p: project_activity.get(p, 0))
+
+        filtered = [t for t in candidates
+                    if t['key'].split('-')[0] == least_active]
+        # Si aucun candidat dans ce projet après filtrage, retourner tous les candidats
+        return filtered if filtered else candidates
 
     def pick_scenario(self) -> Dict[str, Any]:
         """Tire un scénario au sort selon les poids déclarés."""
@@ -54,6 +122,23 @@ class ScenarioEngine:
                 open_subs = [t for t in subtasks if state.get('tickets', {}).get(t, {}).get('status_category') == 'IN PROGRESS']
                 if open_subs:
                     continue
+                # Vérification liens bloquants (bloquant absent = considéré résolu)
+                if not self._is_blocking_resolved(ticket, state):
+                    continue
+            if guard == 'stagnant_ticket':
+                import datetime
+                last_upd = ticket.get('last_updated')
+                if not last_upd:
+                    # Jamais mis à jour = considéré stagnant
+                    pass
+                else:
+                    try:
+                        dt = datetime.datetime.fromisoformat(last_upd)
+                        age = (datetime.datetime.utcnow() - dt).days
+                        if age < 3:
+                            continue   # Pas assez stagnant
+                    except ValueError:
+                        pass
             candidates.append(ticket)
 
         if not candidates and scenario.get('type') not in ('set_absence', 'return_from_absence'):
@@ -61,7 +146,11 @@ class ScenarioEngine:
             return None
 
         # 2. Choisir un ticket si nécessaire
-        ticket = random.choice(candidates) if candidates else None
+        if candidates:
+            balanced_candidates = self._pick_project_balanced(candidates, state)
+            ticket = self._pick_ticket_weighted(balanced_candidates)
+        else:
+            ticket = None
         team_id = ticket.get('team_id') if ticket else None
 
         # 3. Filtrer les membres selon rôle et équipe
@@ -141,7 +230,39 @@ class ScenarioEngine:
                 'is_blocked': ticket.get('is_blocked', False),
                 'priority': ticket.get('priority', 'Medium'),
                 'epic_key': ticket.get('epic_key'),
-                'requires_ai_comment': constraints.get('requires_ai_comment', False)
+                'current_assignee_id': ticket.get('assignee_id', ''),
+                'requires_ai_comment': constraints.get('requires_ai_comment', False),
+                # Contraintes de création propagées pour les scénarios create_issue
+                'issue_type_to_create': constraints.get('issue_type_to_create'),
+                'priority_to_create': constraints.get('priority_to_create'),
+                'initial_status': constraints.get('initial_status'),
+                'requires_epic': constraints.get('requires_epic', False),
+                'link_to_parent': constraints.get('link_to_parent', False),
+                'link_type': constraints.get('link_type'),
+                'field_to_update': constraints.get('field_to_update'),
+                'assign_to_self': constraints.get('assign_to_self', False),
             },
             'ai_content': None
         }
+
+    def _is_blocking_resolved(self, ticket: dict, state: dict) -> bool:
+        """
+        Retourne True si tous les tickets bloquants sont résolus.
+        Un ticket bloquant absent du state est considéré comme résolu
+        (probablement DONE dans Jira).
+        """
+        for link in ticket.get('linked_issues', []):
+            if link.get('link_type', '').lower() in ('is blocked by',
+                                                       'est bloqué par'):
+                blocking_key = link['key']
+                blocking_ticket = state.get('tickets', {}).get(blocking_key)
+                if blocking_ticket is None:
+                    # Absent du state = considéré résolu
+                    logger.debug(
+                        "Ticket bloquant %s absent du state — "
+                        "considéré résolu", blocking_key
+                    )
+                    continue
+                if blocking_ticket.get('status_category') != 'DONE':
+                    return False
+        return True
