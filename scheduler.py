@@ -118,20 +118,80 @@ def run_simulation(n_events: int = 3, force_dry_run: bool = False) -> None:
             if stype == 'add_comment':
                 jira_client.add_comment(key, event['ai_content'])
             elif stype == 'change_status':
-                current = event['context'].get('current_status')
-                target = event['context'].get('target_status')
-                if target:
-                    next_status = target
-                else:
-                    next_index = status_flow.index(current) + 1 if current in status_flow else 0
-                    next_status = status_flow[min(next_index, len(status_flow) - 1)]
+                is_bulk  = event['context'].get('is_bulk', False)
+                bulk_max = event['context'].get('bulk_max', 4)
+                target   = event['context'].get('target_status', '')
 
-                jira_client.transition_ticket(key, next_status)
-                # Mise-à-jour atomique du state
-                state_manager.sync_ticket_after_event(key, {'status': next_status})
+                if is_bulk:
+                    # Chercher jusqu'à bulk_max tickets supplémentaires du même statut/type
+                    project_prefix = key.split('-')[0]
+                    constraints_types = event['context'].get('allowed_types', [])
+                    bulk_candidates = [
+                        t['key'] for t in state.get('tickets', {}).values()
+                        if t['key'] != key
+                        and t.get('status', '').upper() == event['context'].get('current_status', '')
+                        and (not constraints_types or t.get('issue_type') in constraints_types)
+                    ][:bulk_max - 1]   # -1 car le ticket principal est déjà traité
+
+                    all_keys = [key] + bulk_candidates
+                    for bulk_key in all_keys:
+                        jira_client.transition_ticket(bulk_key, target)
+                        state_manager.sync_ticket_after_event(bulk_key, {'status': target})
+                    logger.info(
+                        "[BULK] %d tickets passés en %s : %s",
+                        len(all_keys), target, ', '.join(all_keys)
+                    )
+                    executed += 1
+                    continue   # Passer à l'événement suivant sans le traitement standard
+
+                # Exécuter la transition standard
+                jira_client.transition_ticket(key, target)
+                state_manager.sync_ticket_after_event(key, {'status': target})
+
+                comment_prob = float(os.getenv('COMMENT_ON_TRANSITION', '0.30'))
+                add_comment  = False
+                is_blocking  = target.upper() == 'BLOCKED'
+
+                if is_blocking:
+                    # BLOCKED : commentaire obligatoire
+                    add_comment = True
+                elif random.random() < comment_prob:
+                    # Autres transitions : commentaire probabiliste
+                    add_comment = True
+
+                if add_comment:
+                    # Enrichir l'event avec le contexte de transition pour le prompt IA
+                    event['context']['transition_comment'] = True
+                    event['context']['status_destination'] = target
+                    comment_text = ai_writer.generate_content(event)
+                    jira_client.add_comment(key, comment_text)
+                    logger.info(
+                        "[COMMENT] Commentaire ajouté sur %s (%s → %s)",
+                        key, event['context'].get('current_status', '?'), target
+                    )
+
+                # BLOCKED : parfois ajouter un lien "blocked by" (30% de chance)
+                if is_blocking and random.random() < 0.30:
+                    # Chercher un ticket candidat bloquant dans le même projet
+                    project_prefix = key.split('-')[0]
+                    candidates_blocking = [
+                        t['key'] for t in state.get('tickets', {}).values()
+                        if t['key'] != key
+                        and t['key'].startswith(project_prefix)
+                        and t.get('status_category') != 'DONE'
+                        and t.get('issue_type') in ('Bug', 'Story', 'Task')
+                    ]
+                    if candidates_blocking:
+                        blocking_key = random.choice(candidates_blocking)
+                        jira_client.create_issue_link(key, blocking_key, 'is blocked by')
+                        state_manager.add_issue_link(key, blocking_key, 'is blocked by')
+                        logger.info(
+                            "[LINK] %s is blocked by %s (ajout automatique)",
+                            key, blocking_key
+                        )
 
                 # propagation Epic (70% si Story passe IN PROGRESS)
-                if next_status == 'IN PROGRESS' and event.get('issue_type') == 'Story':
+                if target == 'IN PROGRESS' and event.get('issue_type') == 'Story':
                     epic_key = event['context'].get('epic_key')
                     if epic_key and random.random() < 0.70:
                         epic_ticket = state.get('tickets', {}).get(epic_key)
@@ -140,9 +200,6 @@ def run_simulation(n_events: int = 3, force_dry_run: bool = False) -> None:
                             state_manager.sync_ticket_after_event(epic_key, {'status': 'IN PROGRESS'})
                             logger.info("Epic %s propagée en IN PROGRESS (70%% rule)", epic_key)
 
-                if next_status == 'BLOCKED':
-                    comment = event.get('ai_content') or 'Ticket bloqué — en attente de résolution.'
-                    jira_client.add_comment(key, comment)
             elif stype == 'change_assignee':
                 assign_to_self = event['context'].get('assign_to_self', False)
                 if assign_to_self:
@@ -191,7 +248,7 @@ def run_simulation(n_events: int = 3, force_dry_run: bool = False) -> None:
                     'project': {'key': project},
                     'summary': summary,
                     'issuetype': {'name': issue_type},
-                    'priority': {'name': priority},
+                    'priority': priority,  # Changé de {'name': priority} à priority
                 }
                 if epic_key:
                     # personnalisable via variable d'environnement pour éviter les erreurs "field unknown"
@@ -220,17 +277,22 @@ def run_simulation(n_events: int = 3, force_dry_run: bool = False) -> None:
                 if result.get('key'):
                     state_manager.add_subtask_to_parent(parent_key, result['key'])
             elif stype == 'create_link':
+                link_type    = event['context'].get('link_type', 'relates to')
+                cross_project = event['context'].get('cross_project', False)
                 from_key  = event['ticket_key']
-                link_type = event['context'].get('link_type', 'relates to')
                 from_project = from_key.split('-')[0] if '-' in from_key else ''
 
-                # Choisir un ticket cible différent du ticket source dans le même projet
                 candidates = [
                     t['key'] for t in state.get('tickets', {}).values()
                     if t['key'] != from_key
                     and t.get('status_category') != 'DONE'
-                    and t.get('team_id') == event.get('team_id')
-                    and (t['key'].split('-')[0] if '-' in t['key'] else '') == from_project
+                    and (
+                        # Cross-project : cibler un autre projet
+                        (cross_project and t['key'].split('-')[0] != from_project)
+                        or
+                        # Même projet si pas cross
+                        (not cross_project and t['key'].split('-')[0] == from_project)
+                    )
                 ]
                 if candidates:
                     to_key = random.choice(candidates)
@@ -247,6 +309,48 @@ def run_simulation(n_events: int = 3, force_dry_run: bool = False) -> None:
                             jira_client.transition_ticket(from_key, 'BLOCKED')
                     else:
                         logger.info("[SKIP] create_link %s → %s %s (échec Jira)", from_key, to_key, link_type)
+            elif stype == 'split_issue':
+                source_key   = event['ticket_key']
+                source_summ  = event.get('ticket_summary', 'Story complexe')
+                epic_key     = event['context'].get('epic_key')
+                project_key  = source_key.split('-')[0]
+                account_id   = _resolve_account_id(event['member_id'], state_manager)
+
+                # Générer les résumés des deux nouvelles Stories via IA
+                part1_content = ai_writer.generate_content({
+                    **event,
+                    'scenario_id': 'fragmentation_story',
+                    'context': {**event['context'],
+                                'split_part': 1, 'source_summary': source_summ}
+                })
+                part2_content = ai_writer.generate_content({
+                    **event,
+                    'scenario_id': 'fragmentation_story',
+                    'context': {**event['context'],
+                                'split_part': 2, 'source_summary': source_summ}
+                })
+
+                # Créer les deux nouvelles Stories
+                for part_summary in [part1_content[:100], part2_content[:100]]:
+                    fields = {
+                        'project': {'key': project_key},
+                        'summary': part_summary,
+                        'issuetype': {'name': 'Story'},
+                        'priority': event['context'].get('priority', 'Medium'),
+                        'assignee': {'accountId': account_id},
+                    }
+                    if epic_key:
+                        fields['parent'] = {'key': epic_key}
+                    jira_client.create_issue(fields)
+
+                # Passer la Story source en CANCELLED avec commentaire
+                cancel_comment = (f"Story fragmentée en deux tickets plus petits. "
+                                  f"Voir les nouvelles Stories créées dans ce sprint.")
+                jira_client.add_comment(source_key, cancel_comment)
+                jira_client.transition_ticket(source_key, 'CANCELLED')
+                state_manager.sync_ticket_after_event(source_key, {'status': 'CANCELLED'})
+                logger.info("[SPLIT] %s fragmenté → 2 nouvelles Stories | source CANCELLED",
+                            source_key)
             elif stype == 'update_field':
                 field_name = event['context'].get('field_to_update', 'priority')
 
@@ -267,6 +371,24 @@ def run_simulation(n_events: int = 3, force_dry_run: bool = False) -> None:
                     # story_points = customfield_10016 sur la plupart des instances Jira
                     jira_client.update_issue_field(key, 'customfield_10016', new_sp)
                     state_manager.sync_ticket_after_event(key, {'story_points': new_sp})
+
+                elif field_name == 'labels':
+                    # Ajouter des labels de version ou domaine
+                    label_type = event['context'].get('label_type', 'version')  # 'version' ou 'domain'
+                    if label_type == 'version':
+                        versions = ['v1.0', 'v1.1', 'v2.0', 'v2.1', 'v3.0']
+                        new_label = random.choice(versions)
+                    else:  # domain
+                        domains = ['frontend', 'backend', 'api', 'database', 'security', 'performance']
+                        new_label = random.choice(domains)
+
+                    # Récupérer les labels existants et ajouter le nouveau
+                    current_labels = state.get('tickets', {}).get(key, {}).get('labels', [])
+                    if new_label not in current_labels:
+                        updated_labels = current_labels + [new_label]
+                        jira_client.update_issue_field(key, 'labels', updated_labels)
+                        state_manager.sync_ticket_after_event(key, {'labels': updated_labels})
+                        logger.info("[LABEL] %s ajouté label %s", key, new_label)
             elif stype == 'block_ticket':
                 jira_client.add_comment(key, event['ai_content'])
                 if key in state.get('tickets', {}):

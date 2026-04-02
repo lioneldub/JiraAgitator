@@ -139,6 +139,28 @@ class ScenarioEngine:
                             continue   # Pas assez stagnant
                     except ValueError:
                         pass
+            if guard == 'random_80_percent':
+                if random.random() > 0.80:
+                    continue   # 20% de chance de skipper ce candidat
+            if guard == 'epic_majority_done':
+                epic_key = ticket['key']
+                # Trouver les Stories/Bugs rattachés à cette Epic
+                children = [
+                    t for t in state.get('tickets', {}).values()
+                    if t.get('epic_key') == epic_key
+                    and t.get('issue_type') in ('Story', 'Bug', 'Feature', 'Task')
+                ]
+                if not children:
+                    continue   # Epic sans enfants — ne pas clôturer
+                done_count = sum(1 for c in children
+                                 if c.get('status_category') == 'DONE')
+                ratio = done_count / len(children)
+                if ratio < 0.70:
+                    continue   # Moins de 70% des enfants DONE
+                logger.debug(
+                    "Epic %s : %d/%d enfants DONE (%.0f%%) — éligible à la clôture",
+                    epic_key, done_count, len(children), ratio * 100
+                )
             candidates.append(ticket)
 
         if not candidates and scenario.get('type') not in ('set_absence', 'return_from_absence'):
@@ -187,6 +209,21 @@ class ScenarioEngine:
 
         member = random.choice(available_members)
 
+        # Gestion des scénarios avec target_actor_roles (ex: demande_clarification_metier)
+        target_roles = constraints.get('target_actor_roles', [])
+        target_member = None
+        if target_roles:
+            target_candidates = [
+                {'id': mid, **data}
+                for mid, data in state.get('members', {}).items()
+                if data.get('role', '').lower() in [r.lower() for r in target_roles]
+                and data.get('availability') == 'available'
+                and mid != member['id']
+                and team_id in data.get('team_ids', [])
+            ]
+            if target_candidates:
+                target_member = random.choice(target_candidates)
+
         if scenario.get('type') in ('set_absence', 'return_from_absence'):
             return {
                 'type': scenario.get('type'),
@@ -203,6 +240,13 @@ class ScenarioEngine:
         if not ticket:
             logger.info("Aucun ticket trouvé pour le scénario '%s'", scenario.get('id'))
             return None
+
+        # Enrichir le contexte avec l'Epic summary
+        epic_key = ticket.get('epic_key')
+        epic_summary = ''
+        if epic_key:
+            epic_ticket = state.get('tickets', {}).get(epic_key, {})
+            epic_summary = epic_ticket.get('summary', '')
 
         logger.info(
             "Scénario '%s' → ticket %s [%s] statut '%s' assigné à %s (%s)",
@@ -229,8 +273,11 @@ class ScenarioEngine:
                 'target_status': target_status,
                 'is_blocked': ticket.get('is_blocked', False),
                 'priority': ticket.get('priority', 'Medium'),
-                'epic_key': ticket.get('epic_key'),
+                'epic_key': epic_key,
+                'epic_summary': epic_summary,
                 'current_assignee_id': ticket.get('assignee_id', ''),
+                'target_member_id': target_member['id'] if target_member else None,
+                'target_member_name': target_member.get('display_name', '') if target_member else '',
                 'requires_ai_comment': constraints.get('requires_ai_comment', False),
                 # Contraintes de création propagées pour les scénarios create_issue
                 'issue_type_to_create': constraints.get('issue_type_to_create'),

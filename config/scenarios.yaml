@@ -220,3 +220,90 @@ scenarios:
       statuses: ["IN PROGRESS", "BLOCKED"]
       actor_roles: ["lead"]
       guard: "stagnant_ticket"
+
+  # --- Phase 5D — Scénarios de cohérence produit et collaboration ---
+
+  - id: demande_clarification_metier
+    type: add_comment
+    weight: 12
+    description: "Un DEV demande des précisions au BA sur une Story en IN PROGRESS"
+    constraints:
+      issue_types: ["Story", "Feature"]
+      statuses: ["IN PROGRESS"]
+      actor_roles: ["DEV"]
+      target_actor_roles: ["BA"]
+
+  - id: fragmentation_story
+    type: split_issue
+    weight: 3
+    description: "Une Story trop complexe est divisée en deux nouvelles Stories"
+    constraints:
+      issue_types: ["Story"]
+      statuses: ["IN PROGRESS"]
+      actor_roles: ["lead", "BA"]
+      new_issue_initial_status: "TO DO"
+
+  - id: propagation_epic_progress
+    type: change_status
+    weight: 6
+    description: "L'Epic passe en IN PROGRESS (déclenché par une Story enfant)"
+    constraints:
+      issue_types: ["Epic"]
+      statuses: ["TO DO", "IDEA"]
+      target_status: "IN PROGRESS"
+      actor_roles: ["lead", "BA", "DEV"]
+      guard: "random_80_percent"
+
+  - id: lien_transverse_inter_equipes
+    type: create_link
+    weight: 4
+    description: "Lien 'Relates to' entre un ticket d'un projet et un autre projet"
+    constraints:
+      issue_types: ["Story", "Feature", "Bug"]
+      statuses: ["TO DO", "IN PROGRESS"]
+      actor_roles: ["lead", "BA"]
+      link_type: "relates to"
+      cross_project: true
+
+  - id: tache_hors_epic_erreur
+    type: create_issue
+    weight: 4
+    description: "Création d'une Task isolée sans Epic (erreur humaine ou Run pur)"
+    constraints:
+      actor_roles: ["DEV", "BA"]
+      issue_type_to_create: "Task"
+      initial_status: "TO DO"
+      requires_epic: false
+
+  - id: etiquetage_version
+    type: update_field
+    weight: 7
+    description: "Ajout de labels de version ou de domaine sur un ticket"
+    constraints:
+      issue_types: ["Story", "Bug", "Feature"]
+      statuses: ["IN PROGRESS", "IN REVIEW"]
+      actor_roles: ["lead", "QA", "BA"]
+      field_to_update: "labels"
+
+  - id: cloture_epic
+    type: change_status
+    weight: 2
+    description: "Passage d'une Epic à DONE quand la majorité des enfants sont terminés"
+    constraints:
+      issue_types: ["Epic"]
+      statuses: ["IN PROGRESS"]
+      target_status: "DONE"
+      actor_roles: ["BA", "lead"]
+      guard: "epic_majority_done"
+
+  - id: pret_mise_en_service
+    type: change_status
+    weight: 4
+    description: "Passage de plusieurs tickets IN REVIEW vers DONE (fin de batch)"
+    constraints:
+      issue_types: ["Story", "Bug", "Feature"]
+      statuses: ["IN REVIEW"]
+      target_status: "DONE"
+      actor_roles: ["QA", "lead"]
+      is_bulk: true
+      bulk_max: 4

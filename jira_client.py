@@ -33,6 +33,11 @@ class JiraClient:
                     if mid and aid:
                         self._account_id_map[mid] = aid
 
+        # Cache des priorités : name → id
+        self._priority_map: Dict[str, str] = {}
+        if not self.dry_run:
+            self._load_priorities()
+
         logger.info('JiraClient: DRY_RUN=%s — no HTTP calls will be made', self.dry_run)
         if not self.dry_run:
             logger.warning(
@@ -50,6 +55,25 @@ class JiraClient:
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         }
+
+    def _load_priorities(self) -> None:
+        """Charge le mapping nom priorité → ID depuis Jira."""
+        try:
+            url = f"{self.base_url}/rest/api/3/priority"
+            headers = self._get_auth_headers()
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code == 200:
+                priorities = response.json()
+                for p in priorities:
+                    name = p.get('name', '')
+                    pid = p.get('id', '')
+                    if name and pid:
+                        self._priority_map[name] = pid
+                logger.info("Priorités chargées: %s", list(self._priority_map.keys()))
+            else:
+                logger.warning("Échec chargement priorités: HTTP %d", response.status_code)
+        except Exception as e:
+            logger.warning("Erreur chargement priorités: %s", e)
 
     def _get_status_category(self, status: str) -> str:
         """Retourne la catégorie normalisée d'un statut Jira (insensible à la casse)."""
@@ -427,11 +451,26 @@ class JiraClient:
         if project_key:
             fields.setdefault('project', {'key': project_key})
 
+        # Convertir le nom de priorité en ID si nécessaire
+        if 'priority' in fields:
+            priority_value = fields['priority']
+            if isinstance(priority_value, str) and priority_value in self._priority_map:
+                fields['priority'] = {'id': self._priority_map[priority_value]}
+            elif isinstance(priority_value, str):
+                # Si c'est une string mais pas dans le mapping, essayer de l'utiliser comme ID
+                fields['priority'] = {'id': priority_value}
+            # Si c'est déjà un dict avec 'id', le laisser tel quel
+
         if self.dry_run:
             summary = fields.get('summary', 'Nouveau ticket')
             issue_type = fields.get('issuetype', {}).get('name', 'Story')
+            priority_info = fields.get('priority', {})
+            if isinstance(priority_info, dict):
+                priority_name = f" (priority id: {priority_info.get('id', 'unknown')})"
+            else:
+                priority_name = f" (priority: {priority_info})"
             return self._dry_log('create_issue', project_key or self.project_key,
-                                 f'{issue_type}: "{summary[:60]}"')
+                                 f'{issue_type}: "{summary[:60]}"{priority_name}')
 
         if not project_key:
             raise ValueError('Jira create_issue requis project key non vide')

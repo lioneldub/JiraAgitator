@@ -1,0 +1,93 @@
+[2026-04-02 15:21:27] [INFO] AUTO_BOOTSTRAP=true — rafraîchissement du state depuis Jira...
+[2026-04-02 15:21:28] [INFO] Priorités chargées: ['Highest', 'High', 'Medium', 'Low', 'Lowest']
+[2026-04-02 15:21:28] [INFO] JiraClient: DRY_RUN=False — no HTTP calls will be made
+[2026-04-02 15:21:28] [WARNING] JiraClient: MODE LIVE ACTIF — les appels HTTP vers Jira sont réels !
+[2026-04-02 15:21:28] [INFO] Bootstrap — récupération des tickets pour POT...
+[2026-04-02 15:21:28] [INFO] get_tickets_for_project(POT) : 38 ticket(s)
+[2026-04-02 15:21:28] [INFO]   → 38 ticket(s) récupéré(s) pour POT (équipe: phoenix)
+[2026-04-02 15:21:28] [INFO] Bootstrap — récupération des tickets pour KAN...
+[2026-04-02 15:21:29] [INFO] get_tickets_for_project(KAN) : 62 ticket(s)
+[2026-04-02 15:21:29] [WARNING] Ticket KAN-68 : assignee accountId '712020:77c028bd-5f52' non résolu — vérifier jira_account_id dans teams.yaml
+[2026-04-02 15:21:29] [WARNING] Ticket KAN-67 : assignee accountId '712020:77c028bd-5f52' non résolu — vérifier jira_account_id dans teams.yaml
+[2026-04-02 15:21:29] [INFO]   → 62 ticket(s) récupéré(s) pour KAN (équipe: phoenix)
+[2026-04-02 15:21:29] [INFO] Bootstrap terminé — 100 ticket(s) total, 5 membre(s)
+[2026-04-02 15:21:29] [INFO]   Bug : 25 ticket(s)
+[2026-04-02 15:21:29] [INFO]   Epic : 20 ticket(s)
+[2026-04-02 15:21:29] [INFO]   Story : 37 ticket(s)
+[2026-04-02 15:21:29] [INFO]   Task : 18 ticket(s)
+[2026-04-02 15:21:29] [INFO] Bootstrap terminé — state.json à jour
+[2026-04-02 15:21:29] [INFO] AIWriter: using provider 'stub'
+[2026-04-02 15:21:29] [INFO] Priorités chargées: ['Highest', 'High', 'Medium', 'Low', 'Lowest']
+[2026-04-02 15:21:29] [INFO] JiraClient: DRY_RUN=False — no HTTP calls will be made
+[2026-04-02 15:21:29] [WARNING] JiraClient: MODE LIVE ACTIF — les appels HTTP vers Jira sont réels !
+[2026-04-02 15:21:29] [INFO] [BACKLOG] Backlog équilibré — aucune création nécessaire
+[2026-04-02 15:21:29] [INFO] Run started — 20 events requested
+[2026-04-02 15:21:29] [INFO] RUN_START 2026-04-02T13:21:29.450752+00:00
+[2026-04-02 15:21:29] [INFO] Scenario choisi : add_comment
+[2026-04-02 15:21:29] [INFO] Scénario 'synthese_epic' → ticket KAN-21 [Epic] statut 'IN PROGRESS' assigné à Lionel Dubois (lead)
+[2026-04-02 15:21:29] [INFO] [OK] KAN-21 | Epic (Amélioration de l'observabilité et du mo) | IN PROGRESS → None | par Lionel Dubois
+[2026-04-02 15:21:29] [INFO] Scenario choisi : change_status
+[2026-04-02 15:21:29] [INFO] Scénario 'demande_review' → ticket KAN-63 [Bug] statut 'IN PROGRESS' assigné à Pierre (DEV)
+[2026-04-02 15:21:30] [INFO] [OK] KAN-63 | Bug (Correctif nécessaire sur la gestion des ) | IN PROGRESS → IN REVIEW | par Pierre
+[2026-04-02 15:21:30] [INFO] Scenario choisi : add_comment
+[2026-04-02 15:21:30] [INFO] Scénario 'mise_a_jour_progression' → ticket POT-63 [Story] statut 'IN PROGRESS' assigné à Pierre (DEV)
+[2026-04-02 15:21:31] [INFO] [OK] POT-63 | Story (Implémentation du cache sur les endpoint) | IN PROGRESS → None | par Pierre
+[2026-04-02 15:21:31] [INFO] Scenario choisi : update_field
+[2026-04-02 15:21:31] [INFO] Scénario 'repriorisation' → ticket POT-73 [Story] statut 'IDEA' assigné à Fatou (BA)
+[2026-04-02 15:21:31] [INFO] [OK] POT-73 | Story (Optimisation requise sur le pipeline de ) | IDEA → None | par Fatou
+[2026-04-02 15:21:31] [INFO] Scenario choisi : change_status
+[2026-04-02 15:21:31] [INFO] Aucun ticket candidat pour le scénario 'propagation_epic_progress'
+[2026-04-02 15:21:31] [INFO] [SKIP] scénario 'propagation_epic_progress' — aucun ticket/membre éligible
+[2026-04-02 15:21:31] [INFO] Scenario choisi : change_status
+[2026-04-02 15:21:31] [INFO] Scénario 'demande_review' → ticket KAN-32 [Story] statut 'IN PROGRESS' assigné à Lionel Dubois (lead)
+[2026-04-02 15:21:32] [INFO] [OK] KAN-32 | Story (Analyse des métriques de performance du ) | IN PROGRESS → IN REVIEW | par Lionel Dubois
+[2026-04-02 15:21:32] [INFO] Scenario choisi : change_status
+[2026-04-02 15:21:32] [INFO] Scénario 'rejet_review' → ticket POT-60 [Story] statut 'IN REVIEW' assigné à Lionel Dubois (lead)
+[2026-04-02 15:21:34] [INFO] [COMMENT] Commentaire ajouté sur POT-60 (IN REVIEW → IN PROGRESS)
+[2026-04-02 15:21:34] [INFO] [OK] POT-60 | Story (Régression sur l'authentification après ) | IN REVIEW → IN PROGRESS | par Lionel Dubois
+[2026-04-02 15:21:34] [INFO] Scenario choisi : change_status
+[2026-04-02 15:21:34] [INFO] Scénario 'finalisation' → ticket KAN-32 [Story] statut 'IN REVIEW' assigné à Fatou (BA)
+[2026-04-02 15:21:34] [INFO] [OK] KAN-32 | Story (Analyse des métriques de performance du ) | IN REVIEW → DONE | par Fatou
+[2026-04-02 15:21:34] [INFO] RUN_HEARTBEAT 2026-04-02T13:21:34.940989+00:00 - executed=7 skipped=1
+[2026-04-02 15:21:34] [INFO] Scenario choisi : change_status
+[2026-04-02 15:21:35] [INFO] Scénario 'pret_mise_en_service' → ticket KAN-63 [Bug] statut 'IN REVIEW' assigné à Gala (QA)
+[2026-04-02 15:21:36] [INFO] [COMMENT] Commentaire ajouté sur KAN-63 (IN REVIEW → DONE)
+[2026-04-02 15:21:36] [INFO] [OK] KAN-63 | Bug (Correctif nécessaire sur la gestion des ) | IN REVIEW → DONE | par Gala
+[2026-04-02 15:21:36] [INFO] Scenario choisi : add_comment
+[2026-04-02 15:21:36] [INFO] Scénario 'affinement_backlog' → ticket POT-48 [Story] statut 'IDEA' assigné à Fatou (BA)
+[2026-04-02 15:21:37] [INFO] [OK] POT-48 | Story (Revue et mise à jour des dépendances de ) | IDEA → None | par Fatou
+[2026-04-02 15:21:37] [INFO] Scenario choisi : add_comment
+[2026-04-02 15:21:37] [INFO] Scénario 'relance_lead' → ticket POT-19 [Epic] statut 'IN PROGRESS' assigné à Lionel Dubois (lead)
+[2026-04-02 15:21:37] [INFO] [OK] POT-19 | Epic (Refonte du module d'authentification) | IN PROGRESS → None | par Lionel Dubois
+[2026-04-02 15:21:37] [INFO] Scenario choisi : change_assignee
+[2026-04-02 15:21:37] [INFO] Scénario 'passage_de_relais' → ticket POT-70 [Bug] statut 'BLOCKED' assigné à Paul (DEV)
+[2026-04-02 15:21:38] [INFO] [OK] POT-70 | Bug (Performance dégradée sur l'endpoint /api) | BLOCKED → None | par Paul
+[2026-04-02 15:21:38] [INFO] Scenario choisi : add_comment
+[2026-04-02 15:21:38] [INFO] Scénario 'mise_a_jour_progression' → ticket KAN-76 [Story] statut 'IN PROGRESS' assigné à Pierre (DEV)
+[2026-04-02 15:21:38] [INFO] [OK] KAN-76 | Story (Correctif nécessaire sur la gestion des ) | IN PROGRESS → None | par Pierre
+[2026-04-02 15:21:38] [INFO] Scenario choisi : change_status
+[2026-04-02 15:21:38] [INFO] Aucun ticket candidat pour le scénario 'rejet_review'
+[2026-04-02 15:21:38] [INFO] [SKIP] scénario 'rejet_review' — aucun ticket/membre éligible
+[2026-04-02 15:21:38] [INFO] Scenario choisi : add_comment
+[2026-04-02 15:21:38] [INFO] Scénario 'relance_lead' → ticket KAN-2 [Epic] statut 'IN PROGRESS' assigné à Lionel Dubois (lead)
+[2026-04-02 15:21:39] [INFO] [OK] KAN-2 | Epic (Independant) | IN PROGRESS → None | par Lionel Dubois
+[2026-04-02 15:21:39] [INFO] Scenario choisi : add_comment
+[2026-04-02 15:21:39] [INFO] Scénario 'demande_clarification_metier' → ticket KAN-29 [Story] statut 'IN PROGRESS' assigné à Pierre (DEV)
+[2026-04-02 15:21:39] [INFO] [OK] KAN-29 | Story (Implémentation du cache sur les endpoint) | IN PROGRESS → None | par Pierre
+[2026-04-02 15:21:39] [INFO] Scenario choisi : add_comment
+[2026-04-02 15:21:39] [INFO] Scénario 'mise_a_jour_progression' → ticket KAN-33 [Story] statut 'IN PROGRESS' assigné à Paul (DEV)
+[2026-04-02 15:21:40] [INFO] [OK] KAN-33 | Story (Mise à jour du runbook de production) | IN PROGRESS → None | par Paul
+[2026-04-02 15:21:40] [INFO] RUN_HEARTBEAT 2026-04-02T13:21:40.171131+00:00 - executed=15 skipped=2
+[2026-04-02 15:21:40] [INFO] Scenario choisi : change_status
+[2026-04-02 15:21:40] [INFO] Scénario 'engagement' → ticket KAN-75 [Bug] statut 'IDEA' assigné à Fatou (BA)
+[2026-04-02 15:21:41] [INFO] [COMMENT] Commentaire ajouté sur KAN-75 (IDEA → IN PROGRESS)
+[2026-04-02 15:21:41] [INFO] [OK] KAN-75 | Bug (Performance dégradée sur l'endpoint /api) | IDEA → IN PROGRESS | par Fatou
+[2026-04-02 15:21:41] [INFO] Scenario choisi : change_status
+[2026-04-02 15:21:41] [INFO] Scénario 'deblocage' → ticket POT-62 [Story] statut 'BLOCKED' assigné à Paul (DEV)
+[2026-04-02 15:21:42] [INFO] [OK] POT-62 | Story (Revue et mise à jour des dépendances de ) | BLOCKED → IN PROGRESS | par Paul
+[2026-04-02 15:21:43] [INFO] Scenario choisi : add_comment
+[2026-04-02 15:21:43] [INFO] Scénario 'mise_a_jour_progression' → ticket KAN-45 [Story] statut 'IN PROGRESS' assigné à Lionel Dubois (lead)
+[2026-04-02 15:21:43] [INFO] [OK] KAN-45 | Story (Nouveau besoin identifié lors de la démo) | IN PROGRESS → None | par Lionel Dubois
+[2026-04-02 15:21:43] [INFO] Run complete — 18 events executed, 2 skipped
+[2026-04-02 15:21:44] [INFO] RUN_END 2026-04-02T13:21:43.820665+00:00 | duration=14.4s | executed=18 | skipped=2
+[2026-04-02 15:21:44] [INFO] State saved to state.json

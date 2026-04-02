@@ -104,7 +104,7 @@ def check_and_replenish(project_keys: list[str],
                 'project': {'key': project_key},
                 'summary': summary,
                 'issuetype': {'name': 'Epic'},
-                'priority': {'name': 'Medium'},
+                'priority': 'Medium',
             }
             if account_id:
                 fields['assignee'] = {'accountId': account_id}
@@ -139,7 +139,7 @@ def check_and_replenish(project_keys: list[str],
                 'project': {'key': project_key},
                 'summary': summary,
                 'issuetype': {'name': 'Story'},
-                'priority': {'name': random.choice(['Low', 'Medium', 'High'])},
+                'priority': random.choice(['Low', 'Medium', 'High']),
             }
             if epic_key:
                 fields['parent'] = {'key': epic_key}
